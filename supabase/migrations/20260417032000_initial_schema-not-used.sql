@@ -1,8 +1,13 @@
+-- =============================================================================
+-- CRM App initial schema
+-- Run this in Supabase SQL editor (or via `supabase db push`) after creating
+-- your project. Safe to re-run (uses IF NOT EXISTS and OR REPLACE).
+-- =============================================================================
+
+-- ---------- Enums ----------
 do $$ begin
   create type public.lead_status as enum ('new', 'consulting', 'won', 'rejected');
 exception when duplicate_object then null; end $$;
-
-select enum_range(null::public.lead_status);
 
 do $$ begin
   create type public.lead_source as enum
@@ -13,6 +18,7 @@ do $$ begin
   create type public.interaction_type as enum
     ('call', 'chat', 'meeting', 'email');
 exception when duplicate_object then null; end $$;
+
 -- ---------- profiles ----------
 create table if not exists public.profiles (
   id          uuid primary key references auth.users(id) on delete cascade,
@@ -21,12 +27,8 @@ create table if not exists public.profiles (
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now()
 );
-select * --relname, relrowsecurity 
-from pg_class 
-where oid = 'public.profiles'::regclass;
 
 -- Auto-create profile row when a user signs up
--- Row-Level Trigger
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -55,7 +57,7 @@ create table if not exists public.leads (
   email       text,
   status      public.lead_status not null default 'new',
   source      public.lead_source not null default 'other',
-  position    text,
+  position    text, -- position in company
   location    text,
   notes       text,
   created_at  timestamptz not null default now(),
@@ -103,23 +105,18 @@ create trigger set_updated_at_on_profiles
   before update on public.profiles
   for each row execute function public.tg_set_updated_at();
 
-select oid, relname, relrowsecurity, 'public.profiles'::regclass
-from pg_class 
-where oid IN ('public.profiles'::regclass, 'public.leads'::regclass, 'public.interactions'::regclass)
+-- =============================================================================
+-- Row Level Security
+-- =============================================================================
+alter table public.profiles     enable row level security;
+alter table public.leads        enable row level security;
+alter table public.interactions enable row level security;
 
 -- ---------- profiles RLS ----------
 drop policy if exists "profiles are viewable by owner" on public.profiles;
 create policy "profiles are viewable by owner"
   on public.profiles for select
   using (auth.uid() = id);
-
-select * from public.profiles
-
-select *
-from information_schema.columns
-where table_name = 'profiles'
-  and table_schema = 'public'
-order by ordinal_position;
 
 drop policy if exists "profiles are updatable by owner" on public.profiles;
 create policy "profiles are updatable by owner"
@@ -129,32 +126,30 @@ create policy "profiles are updatable by owner"
 
 -- ---------- leads RLS ----------
 drop policy if exists "leads select own" on public.leads;
-drop policy if exists "leads are selectable by owners" on public.leads;
-create policy "leads are selectable by owners"
+create policy "leads select own"
   on public.leads for select
   using (auth.uid() = owner_id);
 
-drop policy if exists "users can insert their own leads" on public.leads;
--- ngăn ngừa user A insert dữ liệu rác cho user B
-create policy "users can insert their own leads"
+drop policy if exists "leads insert own" on public.leads;
+create policy "leads insert own"
   on public.leads for insert
-  with check (auth.uid() = owner_id); -- id của người đang gởi yêu cầu auth.uid(), phải khớp với owner_id
+  with check (auth.uid() = owner_id);
 
-drop policy if exists "users can update their own leads" on public.leads;
-create policy "users can update their own leads"
+drop policy if exists "leads update own" on public.leads;
+create policy "leads update own"
   on public.leads for update
   using (auth.uid() = owner_id)
   with check (auth.uid() = owner_id);
 
-drop policy if exists "users can delete their own leads" on public.leads;
-create policy "users can delete their own leads"
+drop policy if exists "leads delete own" on public.leads;
+create policy "leads delete own"
   on public.leads for delete
   using (auth.uid() = owner_id);
 
 -- ---------- interactions RLS ----------
 -- (authors of interactions must also own the parent lead)
-drop policy if exists "users can select interactions of their own leads" on public.interactions;
-create policy "users can select interactions of their own leads"
+drop policy if exists "interactions select own" on public.interactions;
+create policy "interactions select own"
   on public.interactions for select
   using (
     auth.uid() = user_id
@@ -164,8 +159,8 @@ create policy "users can select interactions of their own leads"
     )
   );
 
-drop policy if exists "users can insert interactions for their own leads" on public.interactions;
-create policy "users can insert interactions for their own leads"
+drop policy if exists "interactions insert own" on public.interactions;
+create policy "interactions insert own"
   on public.interactions for insert
   with check (
     auth.uid() = user_id
@@ -175,19 +170,13 @@ create policy "users can insert interactions for their own leads"
     )
   );
 
-
-drop policy if exists "users can update interactions for their own leads" on public.interactions;
-create policy "users can update interactions for their own leads"
+drop policy if exists "interactions update own" on public.interactions;
+create policy "interactions update own"
   on public.interactions for update
-  using (auth.uid() = user_id) -- kiểm tra dòng dữ liệu hiện có trong bảng (tránh chỉnh sửa dữ liệu của người khác)
-  with check (auth.uid() = user_id); -- kiểm tra dòng dữ liệu sau khi đã sửa (tránh tẩu tán/"tặng" dữ liệu cho người khác)
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
 
-
-drop policy if exists "users can delete interactions for their own leads" on public.interactions;
-create policy "users can delete interactions for their own leads"
+drop policy if exists "interactions delete own" on public.interactions;
+create policy "interactions delete own"
   on public.interactions for delete
   using (auth.uid() = user_id);
-
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.profiles TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.leads TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.interactions TO authenticated;

@@ -13,11 +13,9 @@
 -- rồi tạo mới. User record không bị đụng.
 -- =============================================================================
 
--- **** Qua màn hình Authentication để Add users (tuanlepn@gmail.com và lpntuan@gmail.com)
-
 do $$
 declare
-  v_email text := 'tuanlepn@gmail.com';  -- <-- Đổi email tại đây nếu cần
+  v_email text := 'admin@cesglobal.com.vn';  -- <-- Đổi email tại đây nếu cần
   v_owner uuid;
   v_lead_count int;
   v_intr_count int;
@@ -162,9 +160,8 @@ begin
 
   -- -------- 5. Update profile full_name cho đẹp (optional) --------
   update public.profiles
-    set full_name = 'CRM-Pro Admin'
+    set full_name = 'Văn An Admin'
     where id = v_owner and (full_name is null or full_name = v_email);
 
   raise notice 'Done!  Mở app → login bằng % → tận hưởng dashboard đầy đặn.', v_email;
 end $$;
-

@@ -20,7 +20,7 @@ const NAV: NavItem[] = [
     label: "Leads",
     matches: (p) => p === "/leads" || p.startsWith("/leads/"),
   },
-  { href: "/calendar", icon: "calendar_today", label: "Calendar" },
+  { href: "/calendar", icon: "calendar_today", label: "Lịch làm việc" },
   { href: "/reports", icon: "analytics", label: "Reports" },
 ];
 
